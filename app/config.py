@@ -5,6 +5,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import find_dotenv, load_dotenv
+
 
 @dataclass
 class Settings:
@@ -24,10 +26,16 @@ class Settings:
     def from_env(cls) -> "Settings":
         """Load settings from environment variables with sensible defaults."""
 
+        # Поддерживаем локальную разработку с помощью файла .env
+        dotenv_path = find_dotenv(usecwd=True)
+        if dotenv_path:
+            load_dotenv(dotenv_path=dotenv_path)
+
         token = os.environ.get("TELEGRAM_BOT_TOKEN")
         if not token:
             raise RuntimeError(
-                "Environment variable TELEGRAM_BOT_TOKEN is required to start the bot"
+                "Environment variable TELEGRAM_BOT_TOKEN is required to start the bot. "
+                "Set it in your shell or in a .env file (see .env.example)."
             )
 
         db_path = Path(os.environ.get("REMINDER_DB_PATH", "reminders.db"))
