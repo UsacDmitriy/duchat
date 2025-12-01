@@ -66,7 +66,9 @@ class ReminderStore:
                 """
                 UPDATE reminders
                 SET status = CASE WHEN is_sent = 1 THEN 'sent' ELSE 'scheduled' END
-                WHERE status IS NULL OR status = ''
+                WHERE status NOT IN ('scheduled', 'sent')
+                   OR (is_sent = 1 AND status != 'sent')
+                   OR (is_sent = 0 AND status != 'scheduled')
                 """
             )
             self.connection.commit()
@@ -119,7 +121,7 @@ class ReminderStore:
                 """
                 SELECT id, chat_id, text, remind_at, mention_target_id, mention_target_name
                 FROM reminders
-                WHERE status = 'scheduled' AND remind_at <= ?
+                WHERE status = 'scheduled' AND is_sent = 0 AND remind_at <= ?
                 ORDER BY remind_at ASC
                 LIMIT ?
                 """,

@@ -71,7 +71,8 @@ async def handle_start(message: Message) -> None:
     await message.answer(
         (
             "📢 Привет! Я помогу напоминать о важных событиях.\n"
-            "Нажми кнопку \"Новое напоминание\" или используй /new, чтобы создать напоминание.\n"
+            "Нажми \"Новое напоминание\" или используй /new, чтобы создать напоминание.\n"
+            "Кнопка \"Мои напоминания\" покажет ваши текущие события в этом чате.\n"
             "Формат даты: YYYY-MM-DD HH:MM (24 часа)."
         ),
         reply_markup=main_keyboard,
@@ -229,21 +230,34 @@ async def handle_list(message: Message, store: ReminderStore) -> None:
     lines = ["🗒 Ваши напоминания:"]
     for row in reminders:
         mention = f" (упомянуть: {row['mention_target_name']})" if row["mention_target_name"] else ""
+        remind_at = row["remind_at"]
+        if isinstance(remind_at, str):
+            with contextlib.suppress(ValueError):
+                remind_at_dt = datetime.fromisoformat(remind_at)
+                remind_at = remind_at_dt.strftime("%Y-%m-%d %H:%M")
+
         lines.append(
             (
                 f"• #{row['id']} [{row['status']}] {row['text']}\n"
-                f"  ⏰ {row['remind_at']}{mention}"
+                f"  ⏰ {remind_at}{mention}"
             )
         )
 
     await message.answer("\n".join(lines))
 
 
-async def process_keyboard_shortcut(message: Message, state: FSMContext) -> None:
+async def process_keyboard_shortcut(
+    message: Message, state: FSMContext, store: ReminderStore
+) -> None:
     """Обрабатывает кнопку "Новое напоминание" как /new."""
 
-    if message.text and "Новое напоминание" in message.text:
+    if not message.text:
+        return
+
+    if "Новое напоминание" in message.text:
         await handle_new(message, state)
+    if "Мои напоминания" in message.text:
+        await handle_list(message, store)
 
 
 async def reminder_worker(bot: Bot, store: ReminderStore, poll_interval: int) -> None:
@@ -321,7 +335,10 @@ async def main() -> None:
     dp.message.register(handle_datetime, ReminderForm.waiting_for_datetime)
     dp.message.register(handle_mention, ReminderForm.waiting_for_mention)
     dp.message.register(handle_text, ReminderForm.waiting_for_text)
-    dp.message.register(process_keyboard_shortcut, F.text.contains("Новое напоминание"))
+    dp.message.register(
+        process_keyboard_shortcut,
+        F.text.in_(["⏰ Новое напоминание", "📋 Мои напоминания"]),
+    )
 
     # Запускаем фонового воркера в отдельной задаче
     reminder_task = asyncio.create_task(
