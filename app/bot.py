@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from datetime import datetime
+import logging
 from typing import List
 
 from aiogram import Bot, Dispatcher, F
@@ -180,6 +181,11 @@ async def reminder_worker(bot: Bot, store: ReminderStore, poll_interval: int) ->
 async def main() -> None:
     """Точка входа: настраивает бота, БД и запускает опрос событий."""
 
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
+
     settings = Settings.from_env()
     store = ReminderStore(settings.database_path)
     bot = Bot(
@@ -200,6 +206,12 @@ async def main() -> None:
     # Запускаем фонового воркера в отдельной задаче
     reminder_task = asyncio.create_task(
         reminder_worker(bot, store, settings.poll_interval_seconds)
+    )
+    logging.info(
+        "🚀 Бот запущен. Слушаем обновления, воркер проверяет напоминания каждые %s сек."
+        " База: %s",
+        settings.poll_interval_seconds,
+        settings.database_path,
     )
 
     try:
