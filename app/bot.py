@@ -10,7 +10,7 @@ from typing import List
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -116,6 +116,11 @@ async def handle_list_from_any_state(
     message: Message, state: FSMContext, store: ReminderStore
 ) -> None:
     """Показывает список напоминаний, предварительно очищая состояние FSM."""
+
+    await state.clear()
+    await handle_list(message, store)
+
+
 async def handle_list_shortcut(
     message: Message, state: FSMContext, store: ReminderStore
 ) -> None:
@@ -323,18 +328,26 @@ async def main() -> None:
     dp.message.register(handle_start, CommandStart())
     dp.message.register(handle_help, Command("help"))
     dp.message.register(handle_new, Command("new"))
-    dp.message.register(handle_list_from_any_state, Command("list"), state="*")
+    dp.message.register(handle_list_from_any_state, Command("list"), StateFilter("*"))
     dp.message.register(
-        handle_list_from_any_state, F.text.contains("Мои напоминания"), state="*"
+        handle_list_from_any_state,
+        F.text.contains("Мои напоминания"),
+        StateFilter("*"),
     )
     dp.message.register(handle_list, Command("list"))
-    dp.message.register(handle_list_shortcut, F.text.contains("Мои напоминания"), state="*")
     dp.message.register(
-        handle_back_to_menu, F.text.contains("Вернуться в меню"), state="*"
+        handle_list_shortcut, F.text.contains("Мои напоминания"), StateFilter("*")
     )
-    dp.message.register(handle_datetime, ReminderForm.waiting_for_datetime)
-    dp.message.register(handle_mention, ReminderForm.waiting_for_mention)
-    dp.message.register(handle_text, ReminderForm.waiting_for_text)
+    dp.message.register(
+        handle_back_to_menu,
+        F.text.contains("Вернуться в меню"),
+        StateFilter("*"),
+    )
+    dp.message.register(
+        handle_datetime, StateFilter(ReminderForm.waiting_for_datetime)
+    )
+    dp.message.register(handle_mention, StateFilter(ReminderForm.waiting_for_mention))
+    dp.message.register(handle_text, StateFilter(ReminderForm.waiting_for_text))
     dp.message.register(
         process_keyboard_shortcut,
         F.text.in_(["⏰ Новое напоминание", "📋 Мои напоминания"]),
