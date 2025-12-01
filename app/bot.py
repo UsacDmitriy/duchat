@@ -43,7 +43,13 @@ async def set_bot_commands(bot: Bot) -> None:
 
 # Примитивная клавиатура для быстрого доступа к созданию напоминания
 main_keyboard = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="⏰ Новое напоминание")]],
+    keyboard=[
+        [
+            KeyboardButton(text="⏰ Новое напоминание"),
+            KeyboardButton(text="🗒 Мои напоминания"),
+        ],
+        [KeyboardButton(text="↩️ Вернуться в меню")],
+    ],
     resize_keyboard=True,
     one_time_keyboard=False,
 )
@@ -85,6 +91,16 @@ async def handle_help(message: Message) -> None:
     )
 
 
+async def handle_back_to_menu(message: Message, state: FSMContext) -> None:
+    """Сбрасывает текущее состояние и возвращает пользователя в меню."""
+
+    await state.clear()
+    await message.answer(
+        "Возвращаю в главное меню. Что сделать?",
+        reply_markup=main_keyboard,
+    )
+
+
 async def handle_new(message: Message, state: FSMContext) -> None:
     """Запускает процесс создания напоминания."""
 
@@ -93,6 +109,15 @@ async def handle_new(message: Message, state: FSMContext) -> None:
         "📝 Какое событие нужно напомнить? Опишите его в одном сообщении.",
         reply_markup=main_keyboard,
     )
+
+
+async def handle_list_reset(
+    message: Message, state: FSMContext, store: ReminderStore
+) -> None:
+    """Обрабатывает список напоминаний, предварительно очищая состояние."""
+
+    await state.clear()
+    await handle_list(message, store)
 
 
 async def handle_text(message: Message, state: FSMContext) -> None:
@@ -280,7 +305,11 @@ async def main() -> None:
     dp.message.register(handle_start, CommandStart())
     dp.message.register(handle_help, Command("help"))
     dp.message.register(handle_new, Command("new"))
-    dp.message.register(handle_list, Command("list"))
+    dp.message.register(handle_list_reset, Command("list"), state="*")
+    dp.message.register(handle_list_reset, F.text.contains("Мои напоминания"), state="*")
+    dp.message.register(
+        handle_back_to_menu, F.text.contains("Вернуться в меню"), state="*"
+    )
     dp.message.register(handle_datetime, ReminderForm.waiting_for_datetime)
     dp.message.register(handle_mention, ReminderForm.waiting_for_mention)
     dp.message.register(handle_text, ReminderForm.waiting_for_text)
