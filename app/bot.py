@@ -25,6 +25,7 @@ class ReminderForm(StatesGroup):
 
     waiting_for_text = State()
     waiting_for_datetime = State()
+    waiting_for_mention = State()
 
 
 async def set_bot_commands(bot: Bot) -> None:
@@ -34,6 +35,7 @@ async def set_bot_commands(bot: Bot) -> None:
         commands=[
             BotCommand(command="start", description="Начать работу с ботом"),
             BotCommand(command="new", description="Создать напоминание"),
+            BotCommand(command="list", description="Список моих напоминаний"),
             BotCommand(command="help", description="Как пользоваться ботом"),
         ]
     )
@@ -76,6 +78,7 @@ async def handle_help(message: Message) -> None:
     await message.answer(
         (
             "• /new — создать напоминание для текущего чата (работает и в группах).\n"
+            "• /list — посмотреть последние напоминания, созданные вами.\n"
             "• Сообщите дату в формате YYYY-MM-DD HH:MM.\n"
             "• Бот должен оставаться в группе, чтобы присылать уведомления."
         )
@@ -122,19 +125,89 @@ async def handle_datetime(
 
     data = await state.get_data()
     text = data.get("text", "Без текста")
+    await state.update_data(remind_at=remind_at)
+    await state.set_state(ReminderForm.waiting_for_mention)
+    await message.answer(
+        (
+            "Кого упомянуть в уведомлении?\n"
+            "Пришлите @username или имя. Если никого не нужно упоминать — отправьте '-'"
+        )
+    )
+
+
+def _extract_mention_data(message: Message) -> tuple[None | int, None | str]:
+    """Пытается вытащить пользователя из сущностей или текста."""
+
+    if not message.text:
+        return None, None
+
+    if message.entities:
+        for entity in message.entities:
+            if entity.type in {"text_mention", "mention"}:
+                if entity.type == "text_mention" and entity.user:
+                    return entity.user.id, entity.user.full_name
+                if entity.type == "mention":
+                    username = message.text[entity.offset : entity.offset + entity.length]
+                    return None, username
+
+    cleaned = message.text.strip()
+    if cleaned in {"-", "—", ""}:
+        return None, None
+    return None, cleaned
+
+
+async def handle_mention(
+    message: Message, state: FSMContext, store: ReminderStore
+) -> None:
+    """Финальный шаг создания напоминания с учетом упоминания."""
+
+    mention_id, mention_name = _extract_mention_data(message)
+
+    data = await state.get_data()
+    text = data.get("text", "Без текста")
+    remind_at: datetime = data["remind_at"]
 
     reminder_id = store.add_reminder(
-        chat_id=message.chat.id, creator_id=message.from_user.id, text=text, remind_at=remind_at
+        chat_id=message.chat.id,
+        creator_id=message.from_user.id,
+        text=text,
+        remind_at=remind_at,
+        mention_target_id=mention_id,
+        mention_target_name=mention_name,
     )
 
     await state.clear()
+    mention_note = f" Укажу {mention_name}" if mention_name else ""
     await message.answer(
         (
-            f"✅ Напоминание сохранено (ID: {reminder_id}).\n"
+            f"✅ Напоминание сохранено (ID: {reminder_id}).{mention_note}\n"
             f"⏰ Напомню {remind_at:%Y-%m-%d %H:%M}."
         ),
         reply_markup=main_keyboard,
     )
+
+
+async def handle_list(message: Message, store: ReminderStore) -> None:
+    """Показывает список напоминаний пользователя."""
+
+    reminders = store.list_reminders(
+        chat_id=message.chat.id, creator_id=message.from_user.id, limit=20
+    )
+    if not reminders:
+        await message.answer("У вас пока нет напоминаний в этом чате.")
+        return
+
+    lines = ["🗒 Ваши напоминания:"]
+    for row in reminders:
+        mention = f" (упомянуть: {row['mention_target_name']})" if row["mention_target_name"] else ""
+        lines.append(
+            (
+                f"• #{row['id']} [{row['status']}] {row['text']}\n"
+                f"  ⏰ {row['remind_at']}{mention}"
+            )
+        )
+
+    await message.answer("\n".join(lines))
 
 
 async def process_keyboard_shortcut(message: Message, state: FSMContext) -> None:
@@ -156,13 +229,21 @@ async def reminder_worker(bot: Bot, store: ReminderStore, poll_interval: int) ->
             text = row["text"]
             remind_at = row["remind_at"]
             chat_id = row["chat_id"]
+            mention_target_id = row["mention_target_id"]
+            mention_target_name = row["mention_target_name"] or "пользователь"
+
+            mention_block = ""
+            if mention_target_id:
+                mention_block = f"<a href=\"tg://user?id={mention_target_id}\">{mention_target_name}</a>, "
+            elif row["mention_target_name"]:
+                mention_block = f"{mention_target_name}, "
 
             try:
                 await bot.send_message(
                     chat_id=chat_id,
                     text=(
                         "🔔 Напоминание!\n"
-                        f"{text}\n"
+                        f"{mention_block}{text}\n"
                         f"Запланировано на: {remind_at}"
                     ),
                     parse_mode=ParseMode.HTML,
@@ -199,7 +280,9 @@ async def main() -> None:
     dp.message.register(handle_start, CommandStart())
     dp.message.register(handle_help, Command("help"))
     dp.message.register(handle_new, Command("new"))
+    dp.message.register(handle_list, Command("list"))
     dp.message.register(handle_datetime, ReminderForm.waiting_for_datetime)
+    dp.message.register(handle_mention, ReminderForm.waiting_for_mention)
     dp.message.register(handle_text, ReminderForm.waiting_for_text)
     dp.message.register(process_keyboard_shortcut, F.text.contains("Новое напоминание"))
 
