@@ -77,3 +77,96 @@
 - Код максимально прокомментирован и разделен по модулям.
 - Для ускорения проверки можно уменьшить `POLL_INTERVAL_SECONDS` в `.env`.
 - При остановке бота все данные остаются в SQLite и будут использованы при следующем запуске.
+
+## Частые проблемы с Git
+Если при попытке получить обновления (`git pull`) появляется ошибка вида:
+
+```
+error: Your local changes to the following files would be overwritten by merge:
+        app/bot.py
+Please commit your changes or stash them before you merge.
+Aborting
+```
+
+значит, у вас есть незакоммиченные локальные изменения, которые конфликтуют с новыми коммитами из удаленного репозитория. Исправить можно несколькими способами:
+
+1. **Сохранить изменения перед получением обновлений**
+   ```bash
+   git add .
+   git commit -m "Сохраняю локальные правки перед pull"
+   git pull
+   ```
+   Если после `git pull` возникнут конфликты, решите их вручную и выполните `git add <файл>` и `git commit`.
+
+2. **Временно отложить изменения (stash)**, если хотите подтянуть обновления без коммита:
+   ```bash
+   git stash
+   git pull
+   git stash pop
+   ```
+   После `git stash pop` также решите возможные конфликты и закоммитьте итоговое состояние.
+
+3. **Отменить локальные правки**, если они не нужны:
+   ```bash
+   git checkout -- app/bot.py  # или git restore app/bot.py
+   git pull
+   ```
+
+Выберите подходящий вариант в зависимости от того, хотите ли вы сохранить свои изменения. Главное — привести рабочую копию к чистому состоянию перед выполнением `git pull`.
+
+Если при выполнении `git commit` появляется сообщение вида:
+
+```
+Author identity unknown
+
+*** Please tell me who you are.
+
+Run
+
+  git config --global user.email "you@example.com"
+  git config --global user.name "Your Name"
+
+to set your account's default identity.
+Omit --global to set the identity only in this repository.
+
+fatal: empty ident name (for <...>) not allowed
+```
+
+нужно настроить имя и email для Git. Укажите актуальные данные (можно только для текущего репозитория):
+
+```bash
+git config user.name "Ваше имя"
+git config user.email "you@example.com"
+```
+
+После этого повторите `git commit`. Если ошибку продолжает показывать, убедитесь, что имя не пустое и email корректный (например, содержит `@`).
+
+Если при `git pull` появляется подсказка вида:
+
+```
+hint: You have divergent branches and need to specify how to reconcile them.
+...
+fatal: Need to specify how to reconcile divergent branches.
+```
+
+Git просит выбрать стратегию, когда локальная ветка и удаленная разошлись. Нужно настроить предпочтительный вариант:
+
+- **Merge (по умолчанию, создаёт merge-коммит):**
+  ```bash
+  git config pull.rebase false
+  git pull
+  ```
+
+- **Rebase (делает историю линейной):**
+  ```bash
+  git config pull.rebase true
+  git pull --rebase
+  ```
+
+- **Только fast-forward (отменяет pull, если нужен merge):**
+  ```bash
+  git config pull.ff only
+  git pull
+  ```
+
+Замените `git config` на `git config --global`, чтобы сохранить настройку для всех репозиториев. Выберите режим, который удобен вашей команде; чаще всего используют rebase для линейной истории или merge, если хотите сохранить ветвления.
