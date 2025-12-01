@@ -111,10 +111,10 @@ async def handle_new(message: Message, state: FSMContext) -> None:
     )
 
 
-async def handle_list_reset(
+async def handle_list_from_any_state(
     message: Message, state: FSMContext, store: ReminderStore
 ) -> None:
-    """Обрабатывает список напоминаний, предварительно очищая состояние."""
+    """Показывает список напоминаний, предварительно очищая состояние FSM."""
 
     await state.clear()
     await handle_list(message, store)
@@ -305,8 +305,10 @@ async def main() -> None:
     dp.message.register(handle_start, CommandStart())
     dp.message.register(handle_help, Command("help"))
     dp.message.register(handle_new, Command("new"))
-    dp.message.register(handle_list_reset, Command("list"), state="*")
-    dp.message.register(handle_list_reset, F.text.contains("Мои напоминания"), state="*")
+    dp.message.register(handle_list_from_any_state, Command("list"), state="*")
+    dp.message.register(
+        handle_list_from_any_state, F.text.contains("Мои напоминания"), state="*"
+    )
     dp.message.register(
         handle_back_to_menu, F.text.contains("Вернуться в меню"), state="*"
     )
