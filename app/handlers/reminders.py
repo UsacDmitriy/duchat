@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import html
 from datetime import datetime
 import logging
 from aiogram.fsm.context import FSMContext
@@ -161,7 +162,9 @@ async def handle_list(message: Message, store: ReminderStore) -> None:
     lines = ["🗒 Ваши напоминания:"]
     for row in reminders:
         mention = (
-            f" (упомянуть: {row['mention_target_name']})" if row["mention_target_name"] else ""
+            f" (упомянуть: {html.escape(row['mention_target_name'])})"
+            if row["mention_target_name"]
+            else ""
         )
         remind_at = row["remind_at"]
         if isinstance(remind_at, str):
@@ -171,7 +174,7 @@ async def handle_list(message: Message, store: ReminderStore) -> None:
 
         lines.append(
             (
-                f"• #{row['id']} [{row['status']}] {row['text']}\n"
+                f"• #{row['id']} [{row['status']}] {html.escape(row['text'])}\n"
                 f"  ⏰ {remind_at}{mention}"
             )
         )
