@@ -147,6 +147,79 @@ class ReminderStore:
             )
             self.connection.commit()
 
+    def mark_failed(self, reminder_id: int) -> None:
+        """Помечает напоминание как не доставленное."""
+
+        with closing(self.connection.cursor()) as cur:
+            cur.execute(
+                """
+                UPDATE reminders
+                SET status = 'failed'
+                WHERE id = ?
+                """,
+                (reminder_id,),
+            )
+            self.connection.commit()
+
+    def cancel_reminder(self, *, reminder_id: int, chat_id: int, creator_id: int) -> bool:
+        """Отменяет напоминание, если оно принадлежит пользователю."""
+
+        with closing(self.connection.cursor()) as cur:
+            cur.execute(
+                """
+                UPDATE reminders
+                SET status = 'cancelled', is_sent = 1
+                WHERE id = ? AND chat_id = ? AND creator_id = ? AND status = 'scheduled'
+                """,
+                (reminder_id, chat_id, creator_id),
+            )
+            self.connection.commit()
+            return cur.rowcount > 0
+
+    def complete_reminder(
+        self, *, reminder_id: int, chat_id: int, creator_id: int
+    ) -> bool:
+        """Помечает напоминание как выполненное пользователем."""
+
+        with closing(self.connection.cursor()) as cur:
+            cur.execute(
+                """
+                UPDATE reminders
+                SET status = 'completed', is_sent = 1
+                WHERE id = ? AND chat_id = ? AND creator_id = ? AND status IN ('scheduled', 'sent')
+                """,
+                (reminder_id, chat_id, creator_id),
+            )
+            self.connection.commit()
+            return cur.rowcount > 0
+
+    def reschedule_reminder(
+        self,
+        *,
+        reminder_id: int,
+        chat_id: int,
+        creator_id: int,
+        remind_at: datetime,
+    ) -> bool:
+        """Переносит напоминание на новую дату."""
+
+        with closing(self.connection.cursor()) as cur:
+            cur.execute(
+                """
+                UPDATE reminders
+                SET remind_at = ?, status = 'scheduled', is_sent = 0
+                WHERE id = ? AND chat_id = ? AND creator_id = ? AND status IN ('scheduled', 'sent')
+                """,
+                (
+                    remind_at.isoformat(timespec="minutes"),
+                    reminder_id,
+                    chat_id,
+                    creator_id,
+                ),
+            )
+            self.connection.commit()
+            return cur.rowcount > 0
+
     def list_reminders(
         self, *, chat_id: int, creator_id: int, limit: int = 20
     ) -> List[sqlite3.Row]:
