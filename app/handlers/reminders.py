@@ -184,10 +184,6 @@ async def handle_list(message: Message, store: ReminderStore) -> None:
     )
 
     await message.answer("\n".join(lines), parse_mode=None)
-        "\nДоступные действия: /cancel <id>, /done <id>, /move <id> YYYY-MM-DD HH:MM"
-    )
-
-    await message.answer("\n".join(lines))
 
 
 def _parse_id_arg(message: Message) -> tuple[bool, int | None]:
@@ -211,7 +207,6 @@ async def handle_cancel(message: Message, store: ReminderStore) -> None:
     ok, reminder_id = _parse_id_arg(message)
     if not ok or reminder_id is None:
         await message.answer("Использование: /cancel <id>", parse_mode=None)
-        await message.answer("Использование: /cancel <id>")
         return
 
     success = store.cancel_reminder(
@@ -229,7 +224,6 @@ async def handle_done(message: Message, store: ReminderStore) -> None:
     ok, reminder_id = _parse_id_arg(message)
     if not ok or reminder_id is None:
         await message.answer("Использование: /done <id>", parse_mode=None)
-        await message.answer("Использование: /done <id>")
         return
 
     success = store.complete_reminder(
@@ -246,13 +240,11 @@ async def handle_move(message: Message, store: ReminderStore) -> None:
 
     if not message.text:
         await message.answer("Использование: /move <id> YYYY-MM-DD HH:MM", parse_mode=None)
-        await message.answer("Использование: /move <id> YYYY-MM-DD HH:MM")
         return
 
     parts = message.text.split(maxsplit=2)
     if len(parts) < 3:
         await message.answer("Использование: /move <id> YYYY-MM-DD HH:MM", parse_mode=None)
-        await message.answer("Использование: /move <id> YYYY-MM-DD HH:MM")
         return
 
     try:
