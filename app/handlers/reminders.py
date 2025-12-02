@@ -180,7 +180,7 @@ async def handle_list(message: Message, store: ReminderStore) -> None:
         )
 
     lines.append(
-        "\nДоступные действия: /cancel &lt;id&gt;, /done &lt;id&gt;, /move &lt;id&gt; YYYY-MM-DD HH:MM"
+        "\nДоступные действия: /cancel <id>, /done <id>, /move <id> YYYY-MM-DD HH:MM"
     )
 
     await message.answer("\n".join(lines))
