@@ -35,5 +35,9 @@ def register_handlers(dp: Dispatcher) -> None:
         F.text.in_(["⏰ Новое напоминание", "📋 Мои напоминания"]),
     )
 
+    dp.callback_query.register(
+        reminders.handle_reminder_action, F.data.startswith("reminder:")
+    )
+
     # Backup registration for users invoking /list when FSM is not active
     dp.message.register(reminders.handle_list, Command("list"))
