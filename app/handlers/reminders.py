@@ -7,7 +7,8 @@ from datetime import datetime
 import logging
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.db import ReminderStore
 from app.keyboards import main_keyboard
@@ -159,7 +160,8 @@ async def handle_list(message: Message, store: ReminderStore) -> None:
         await message.answer("У вас пока нет напоминаний в этом чате.")
         return
 
-    lines = ["🗒 Ваши напоминания:"]
+    await message.answer("🗒 Ваши напоминания:")
+
     for row in reminders:
         mention = (
             f" (упомянуть: {html.escape(row['mention_target_name'])})"
@@ -172,18 +174,22 @@ async def handle_list(message: Message, store: ReminderStore) -> None:
                 remind_at_dt = datetime.fromisoformat(remind_at)
                 remind_at = remind_at_dt.strftime("%Y-%m-%d %H:%M")
 
-        lines.append(
-            (
-                f"• #{row['id']} [{row['status']}] {html.escape(row['text'])}\n"
-                f"  ⏰ {remind_at}{mention}"
-            )
+        status = row["status"]
+        status_icon = {
+            "scheduled": "🟢",
+            "sent": "📨",
+            "completed": "✅",
+            "cancelled": "🚫",
+            "failed": "⚠️",
+        }.get(status, "ℹ️")
+
+        text = (
+            f"{status_icon} #{row['id']} — {html.escape(row['text'])}\n"
+            f"⏰ {remind_at}{mention}"
         )
 
-    lines.append(
-        "\nДоступные действия: /cancel &lt;id&gt;, /done &lt;id&gt;, /move &lt;id&gt; YYYY-MM-DD HH:MM"
-    )
-
-    await message.answer("\n".join(lines), parse_mode=None)
+        keyboard = _build_reminder_keyboard(row["id"], status)
+        await message.answer(text, reply_markup=keyboard, parse_mode=None)
 
 
 def _parse_id_arg(message: Message) -> tuple[bool, int | None]:
@@ -282,3 +288,76 @@ async def process_keyboard_shortcut(
         await handle_new(message, state)
     if "Мои напоминания" in message.text:
         await handle_list(message, store)
+
+
+def _build_reminder_keyboard(reminder_id: int, status: str):
+    """Создает компактные кнопки действий для напоминания."""
+
+    if status not in {"scheduled", "sent"}:
+        return None
+
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="✅ Выполнено",
+        callback_data=f"reminder:done:{reminder_id}",
+    )
+    builder.button(
+        text="🚫 Отменить",
+        callback_data=f"reminder:cancel:{reminder_id}",
+    )
+    builder.button(
+        text="🗓 Перенести",
+        switch_inline_query_current_chat=f"/move {reminder_id} ",
+    )
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+async def handle_reminder_action(
+    callback: CallbackQuery, store: ReminderStore
+) -> None:
+    """Обрабатывает нажатия кнопок «Выполнено» и «Отменить»."""
+
+    if not callback.data or callback.message is None:
+        await callback.answer("Что-то пошло не так.", show_alert=True)
+        return
+
+    try:
+        _, action, reminder_id_str = callback.data.split(":", maxsplit=2)
+        reminder_id = int(reminder_id_str)
+    except ValueError:
+        await callback.answer("Некорректные данные кнопки.", show_alert=True)
+        return
+
+    chat_id = callback.message.chat.id
+    user_id = callback.from_user.id
+
+    if action == "done":
+        success = store.complete_reminder(
+            reminder_id=reminder_id, chat_id=chat_id, creator_id=user_id
+        )
+        success_message = "Напоминание отмечено выполненным."
+        new_status_label = "✅ Статус: выполнено"
+    elif action == "cancel":
+        success = store.cancel_reminder(
+            reminder_id=reminder_id, chat_id=chat_id, creator_id=user_id
+        )
+        success_message = "Напоминание отменено."
+        new_status_label = "🚫 Статус: отменено"
+    else:
+        await callback.answer("Неизвестное действие.", show_alert=True)
+        return
+
+    if not success:
+        await callback.answer(
+            "Не удалось обновить напоминание. Проверьте его статус.", show_alert=True
+        )
+        return
+
+    base_text = callback.message.text or callback.message.html_text or ""
+    await callback.message.edit_text(
+        f"{base_text}\n\n{new_status_label}",
+        reply_markup=None,
+        parse_mode=None,
+    )
+    await callback.answer(success_message)
