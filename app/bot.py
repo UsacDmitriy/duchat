@@ -27,32 +27,35 @@ async def main() -> None:
 
     settings = Settings.from_env()
     store = ReminderStore(settings.database_path)
-    bot = Bot(
-        token=settings.bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
     dp = Dispatcher(storage=MemoryStorage())
 
-    await set_bot_commands(bot)
-    register_handlers(dp)
+    reminder_task: asyncio.Task | None = None
 
-    reminder_task = asyncio.create_task(
-        reminder_worker(bot, store, settings.poll_interval_seconds)
-    )
-    logging.info(
-        "🚀 Бот запущен. Слушаем обновления, воркер проверяет напоминания каждые %s сек."
-        " База: %s",
-        settings.poll_interval_seconds,
-        settings.database_path,
-    )
+    async with Bot(
+        token=settings.bot_token,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    ) as bot:
+        await set_bot_commands(bot)
+        register_handlers(dp)
 
-    try:
-        await dp.start_polling(bot, store=store)
-    finally:
-        reminder_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await reminder_task
-        store.close()
+        reminder_task = asyncio.create_task(
+            reminder_worker(bot, store, settings.poll_interval_seconds)
+        )
+        logging.info(
+            "🚀 Бот запущен. Слушаем обновления, воркер проверяет напоминания каждые %s сек."
+            " База: %s",
+            settings.poll_interval_seconds,
+            settings.database_path,
+        )
+
+        try:
+            await dp.start_polling(bot, store=store)
+        finally:
+            if reminder_task:
+                reminder_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await reminder_task
+            store.close()
 
 
 if __name__ == "__main__":
