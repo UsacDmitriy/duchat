@@ -31,10 +31,11 @@ async def main() -> None:
 
     reminder_task: asyncio.Task | None = None
 
-    async with Bot(
+    bot = Bot(
         token=settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    ) as bot:
+    )
+    try:
         await set_bot_commands(bot)
         register_handlers(dp)
 
@@ -42,20 +43,19 @@ async def main() -> None:
             reminder_worker(bot, store, settings.poll_interval_seconds)
         )
         logging.info(
-            "🚀 Бот запущен. Слушаем обновления, воркер проверяет напоминания каждые %s сек."
-            " База: %s",
+            "🚀 Бот запущен. Слушаем обновления, воркер проверяет напоминания каждые %s сек. База: %s",
             settings.poll_interval_seconds,
             settings.database_path,
         )
 
-        try:
-            await dp.start_polling(bot, store=store)
-        finally:
-            if reminder_task:
-                reminder_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await reminder_task
-            store.close()
+        await dp.start_polling(bot, store=store)
+    finally:
+        if reminder_task:
+            reminder_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await reminder_task
+        store.close()
+        await bot.session.close()
 
 
 if __name__ == "__main__":
