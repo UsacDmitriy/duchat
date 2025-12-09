@@ -24,10 +24,21 @@ class ReminderForm(StatesGroup):
     waiting_for_mention = State()
 
 
-def parse_datetime(user_input: str) -> datetime:
-    """Парсит дату и время в формате YYYY-MM-DD HH:MM."""
+def parse_datetime(user_input: str, *, now: datetime | None = None) -> datetime:
+    """Парсит дату и время и проверяет, что она в будущем."""
 
-    return datetime.strptime(user_input.strip(), "%Y-%m-%d %H:%M")
+    baseline = now or datetime.now()
+    try:
+        parsed = datetime.strptime(user_input.strip(), "%Y-%m-%d %H:%M")
+    except ValueError as exc:
+        raise ValueError(
+            "Некорректный формат даты. Используйте 2024-12-31 18:30"
+        ) from exc
+
+    if parsed <= baseline:
+        raise ValueError("Дата должна быть в будущем")
+
+    return parsed
 
 
 async def handle_new(message: Message, state: FSMContext) -> None:
@@ -78,12 +89,8 @@ async def handle_datetime(
 
     try:
         remind_at = parse_datetime(message.text)
-        if remind_at <= datetime.now():
-            raise ValueError("Дата должна быть в будущем")
     except ValueError as exc:
-        await message.answer(
-            f"❌ {exc}. Попробуйте еще раз в формате 2024-12-31 18:30"
-        )
+        await message.answer(f"❌ {exc}. Попробуйте еще раз.")
         return
 
     data = await state.get_data()
@@ -162,6 +169,14 @@ async def handle_list(message: Message, store: ReminderStore) -> None:
 
     await message.answer("🗒 Ваши напоминания:")
 
+    status_labels = {
+        "scheduled": "🟢 Запланировано",
+        "sent": "📨 Отправлено",
+        "completed": "✅ Выполнено",
+        "cancelled": "🚫 Отменено",
+        "failed": "⚠️ Ошибка доставки",
+    }
+
     for row in reminders:
         mention = (
             f" (упомянуть: {html.escape(row['mention_target_name'])})"
@@ -169,23 +184,21 @@ async def handle_list(message: Message, store: ReminderStore) -> None:
             else ""
         )
         remind_at = row["remind_at"]
+        remind_at_text = str(remind_at)
         if isinstance(remind_at, str):
             with contextlib.suppress(ValueError):
                 remind_at_dt = datetime.fromisoformat(remind_at)
-                remind_at = remind_at_dt.strftime("%Y-%m-%d %H:%M")
+                remind_at_text = remind_at_dt.strftime("%d.%m %H:%M")
+        elif isinstance(remind_at, datetime):
+            remind_at_text = remind_at.strftime("%d.%m %H:%M")
 
         status = row["status"]
-        status_icon = {
-            "scheduled": "🟢",
-            "sent": "📨",
-            "completed": "✅",
-            "cancelled": "🚫",
-            "failed": "⚠️",
-        }.get(status, "ℹ️")
+        status_label = status_labels.get(status, "ℹ️ Статус не определён")
 
         text = (
-            f"{status_icon} #{row['id']} — {html.escape(row['text'])}\n"
-            f"⏰ {remind_at}{mention}"
+            f"{status_label} — #{row['id']}\n"
+            f"{html.escape(row['text'])}\n"
+            f"⏰ {remind_at_text}{mention}"
         )
 
         keyboard = _build_reminder_keyboard(row["id"], status)
@@ -256,10 +269,8 @@ async def handle_move(message: Message, store: ReminderStore) -> None:
     try:
         reminder_id = int(parts[1])
         new_datetime = parse_datetime(parts[2])
-        if new_datetime <= datetime.now():
-            raise ValueError("Дата должна быть в будущем")
     except ValueError as exc:
-        await message.answer(f"Ошибка: {exc}. Формат даты: 2024-12-31 18:30")
+        await message.answer(f"Ошибка: {exc}.")
         return
 
     success = store.reschedule_reminder(
